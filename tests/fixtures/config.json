@@ -1,0 +1,24 @@
+{
+  "version": "30:0:18",
+  "name": "taler-merchant",
+  "currency": "KUDOS",
+  "implementation": "urn:net:taler:specs:taler-merchant:c-reference",
+  "default_persona": "expert",
+  "currencies": {
+    "KUDOS": {
+      "name": "Kudos",
+      "currency": "KUDOS",
+      "num_fractional_input_digits": 2,
+      "num_fractional_normal_digits": 2,
+      "num_fractional_trailing_zero_digits": 2,
+      "alt_unit_names": { "0": "ク" }
+    }
+  },
+  "exchanges": [
+    {
+      "master_pub": "F80MFRG8HVH6R9CQ47KRFQSJP3T6DBJ4K1D9B703RJY3Z39TBMJ0",
+      "currency": "KUDOS",
+      "base_url": "https://exchange.demo.taler.net/"
+    }
+  ]
+}

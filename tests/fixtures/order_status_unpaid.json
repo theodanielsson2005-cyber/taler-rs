@@ -1,0 +1,18 @@
+{
+  "order_status": "unpaid",
+  "taler_pay_uri": "taler://pay/backend.demo.taler.net/instances/sandbox/o-0123456789abcdef0123456789abcdef/",
+  "creation_time": {
+    "t_s": 1700000000
+  },
+  "pay_deadline": {
+    "t_s": 1893456000
+  },
+  "summary": "Donation",
+  "total_amount": "KUDOS:1",
+  "proto_contract_terms": {
+    "summary": "Donation",
+    "amount": "KUDOS:1",
+    "fulfillment_url": "https://example.com/thanks"
+  },
+  "order_status_url": "https://backend.demo.taler.net/instances/sandbox/orders/o-0123456789abcdef0123456789abcdef"
+}

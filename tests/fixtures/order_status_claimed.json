@@ -1,0 +1,10 @@
+{
+  "order_status": "claimed",
+  "contract_terms": {
+    "summary": "Donation",
+    "amount": "KUDOS:1",
+    "fulfillment_url": "https://example.com/thanks",
+    "order_id": "o-0123456789abcdef0123456789abcdef"
+  },
+  "order_status_url": "https://backend.demo.taler.net/instances/sandbox/orders/o-0123456789abcdef0123456789abcdef"
+}

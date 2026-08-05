@@ -1,0 +1,23 @@
+{
+  "order_status": "paid",
+  "refunded": false,
+  "refund_pending": false,
+  "wired": false,
+  "deposit_total": "KUDOS:1",
+  "exchange_code": 0,
+  "exchange_http_status": 0,
+  "refund_amount": "KUDOS:0",
+  "contract_terms": {
+    "summary": "Donation",
+    "amount": "KUDOS:1",
+    "fulfillment_url": "https://example.com/thanks",
+    "order_id": "o-paid-example"
+  },
+  "last_payment": {
+    "t_s": 1700000100
+  },
+  "wire_details": [],
+  "refund_details": [],
+  "refunds_external": [],
+  "order_status_url": "https://backend.demo.taler.net/instances/sandbox/orders/o-paid-example"
+}
