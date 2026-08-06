@@ -29,9 +29,10 @@ Also:
 
 - Spec-faithful `Amount` (no `f64`; currency ≤11 letters; ≤8 fractional digits; integer ≤2⁵²)
 - Typed status union: **unpaid / claimed / paid**
-- Secret redaction + zeroize; `ClaimToken` redacts on `Serialize` too
+- Secret redaction + zeroize; `ClaimToken` redacts on `Serialize` too (use `as_str()` to persist)
+- HTTP client never follows redirects; `https://` required (`http://` loopback only for tests)
 - Unguessable order-id helper; weak IDs rejected when `create_token: false`
-- `create_order` requires unpaid + pay URI; typed orphan error if POST ok / GET fails
+- `create_order` requires unpaid + pay URI; typed orphan error with nested cause / `Error::source`
 - Offline fixtures + HTTP mock contract tests + optional live sandbox test
 - CI: `fmt` · `clippy -D warnings` · `test`
 

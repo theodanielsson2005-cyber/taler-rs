@@ -9,7 +9,10 @@
 //!   are unguessable without claim tokens. Weak custom IDs are rejected when
 //!   claim tokens are disabled.
 //! - [`SecretToken`] and [`ClaimToken`] redact secrets in `Debug`/`Display`;
-//!   [`ClaimToken`] also redacts on `Serialize`; both zeroize on drop.
+//!   [`ClaimToken`] also redacts on `Serialize` (use [`ClaimToken::as_str`] to
+//!   persist intentionally); both zeroize on drop.
+//! - The HTTP client **never follows redirects**, so Bearer tokens cannot hop
+//!   hosts via `Location`.
 //! - Do not put buyer PII in fulfillment URLs or logs; do not expose public
 //!   order listings in adopter shops.
 //!

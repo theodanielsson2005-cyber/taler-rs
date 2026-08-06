@@ -5,6 +5,7 @@
 
 use httpmock::prelude::*;
 use serde_json::json;
+use std::error::Error;
 use taler_merchant::{
     Amount, CreateOrderRequest, MerchantClient, MerchantError, MerchantOrderStatus, StatusQuery,
 };
@@ -254,13 +255,18 @@ fn create_order_orphan_when_status_get_fails() {
         )
         .unwrap_err();
 
-    match err {
+    assert!(Error::source(&err).is_some());
+    match &err {
         MerchantError::CreatedButStatusFailed {
             order_id: oid,
             cause,
         } => {
             assert_eq!(oid, order_id);
-            assert!(cause.contains("500") || cause.contains("backend"));
+            assert!(
+                matches!(cause.as_ref(), MerchantError::Http { status: 500, .. })
+                    || cause.to_string().contains("500")
+                    || cause.to_string().contains("backend")
+            );
         }
         other => panic!("expected CreatedButStatusFailed, got {other}"),
     }
@@ -503,4 +509,174 @@ fn unauthorized_maps_to_typed_error() {
         }
         other => panic!("expected Unauthorized, got {other}"),
     }
+}
+
+#[test]
+fn redirect_is_refused_and_not_followed() {
+    let server = MockServer::start();
+    let order_id = "o-eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+
+    let redirect = server.mock(|when, then| {
+        when.method(GET)
+            .path(format!("/instances/sandbox/private/orders/{order_id}"))
+            .header("Authorization", "Bearer secret-token:sandbox");
+        then.status(302)
+            .header("Location", "https://evil.example/steal");
+    });
+
+    // If the client followed redirects with auth, this would be hit — it must not be.
+    let evil = server.mock(|when, then| {
+        when.method(GET).path("/steal");
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(json!({ "order_status": "unpaid" }));
+    });
+
+    let client = MerchantClient::with_credentials(
+        format!("{}/instances/sandbox/", server.base_url()),
+        "sandbox",
+    )
+    .unwrap();
+
+    let err = client
+        .get_order_status(order_id, &StatusQuery::default())
+        .unwrap_err();
+    redirect.assert();
+    assert_eq!(evil.hits(), 0);
+    match err {
+        MerchantError::RedirectDisallowed { status, location } => {
+            assert_eq!(status, 302);
+            assert_eq!(location.as_deref(), Some("https://evil.example/steal"));
+        }
+        other => panic!("expected RedirectDisallowed, got {other}"),
+    }
+}
+
+#[test]
+fn create_order_rejects_empty_pay_uri() {
+    let server = MockServer::start();
+    let order_id = "o-ffffffffffffffffffffffffffffffff";
+
+    let _post = server.mock(|when, then| {
+        when.method(POST).path("/instances/sandbox/private/orders");
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(json!({
+                "order_id": order_id,
+                "pay_deadline": { "t_s": 1893456000 }
+            }));
+    });
+
+    let _status = server.mock(|when, then| {
+        when.method(GET)
+            .path(format!("/instances/sandbox/private/orders/{order_id}"));
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(json!({
+                "order_status": "unpaid",
+                "taler_pay_uri": "   ",
+                "order_status_url": format!("https://example.test/orders/{order_id}"),
+                "creation_time": { "t_s": 1700000000 }
+            }));
+    });
+
+    let client = MerchantClient::with_credentials(
+        format!("{}/instances/sandbox/", server.base_url()),
+        "sandbox",
+    )
+    .unwrap();
+
+    let err = client
+        .create_order(
+            CreateOrderRequest::new(
+                "empty-uri",
+                Amount::parse("KUDOS:1").unwrap(),
+                "https://example.com/thanks",
+            )
+            .with_order_id(order_id),
+        )
+        .unwrap_err();
+
+    assert!(matches!(err, MerchantError::UnexpectedOrderStatus { .. }));
+}
+
+#[test]
+fn malformed_json_200_is_protocol_error() {
+    let server = MockServer::start();
+    let deny = server.mock(|when, then| {
+        when.method(GET).path("/instances/sandbox/config");
+        then.status(200)
+            .header("content-type", "application/json")
+            .body("not-json{");
+    });
+
+    let client = MerchantClient::with_credentials(
+        format!("{}/instances/sandbox/", server.base_url()),
+        "sandbox",
+    )
+    .unwrap();
+
+    let err = client.get_config().unwrap_err();
+    deny.assert();
+    assert!(matches!(err, MerchantError::Protocol(_)));
+}
+
+#[test]
+fn post_order_rejects_empty_summary_and_bad_fulfillment() {
+    let server = MockServer::start();
+    let client = MerchantClient::with_credentials(
+        format!("{}/instances/sandbox/", server.base_url()),
+        "sandbox",
+    )
+    .unwrap();
+
+    let err = client
+        .post_order(CreateOrderRequest::new(
+            "   ",
+            Amount::parse("KUDOS:1").unwrap(),
+            "https://example.com/thanks",
+        ))
+        .unwrap_err();
+    assert!(matches!(err, MerchantError::Config(_)));
+
+    let err = client
+        .post_order(CreateOrderRequest::new(
+            "ok",
+            Amount::parse("KUDOS:1").unwrap(),
+            "javascript:alert(1)",
+        ))
+        .unwrap_err();
+    assert!(matches!(err, MerchantError::Config(_)));
+}
+
+#[test]
+fn get_order_status_encodes_session_id_query() {
+    let server = MockServer::start();
+    let order_id = "o-sessionidsessionidsessionidsessio";
+
+    let mock = server.mock(|when, then| {
+        when.method(GET)
+            .path(format!("/instances/sandbox/private/orders/{order_id}"))
+            .query_param("session_id", "ab c");
+        then.status(200)
+            .header("content-type", "application/json")
+            .json_body(unpaid_body(order_id));
+    });
+
+    let client = MerchantClient::with_credentials(
+        format!("{}/instances/sandbox/", server.base_url()),
+        "sandbox",
+    )
+    .unwrap();
+
+    let _ = client
+        .get_order_status(
+            order_id,
+            &StatusQuery {
+                timeout_ms: None,
+                session_id: Some("ab c".into()),
+            },
+        )
+        .unwrap();
+    mock.assert();
 }

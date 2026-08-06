@@ -1,5 +1,6 @@
 //! Typed errors for the merchant client.
 
+use std::error::Error;
 use std::fmt;
 
 /// Errors produced by [`crate::MerchantClient`] and related helpers.
@@ -40,6 +41,13 @@ pub enum MerchantError {
         /// Optional Taler error hint from the body.
         hint: Option<String>,
     },
+    /// HTTP 3xx — redirects are never followed (Bearer token must not hop hosts).
+    RedirectDisallowed {
+        /// HTTP status code (301/302/307/…).
+        status: u16,
+        /// `Location` header when present.
+        location: Option<String>,
+    },
     /// Other non-success HTTP response from the backend.
     Http {
         /// HTTP status code.
@@ -61,8 +69,8 @@ pub enum MerchantError {
     CreatedButStatusFailed {
         /// Order id assigned by the successful POST.
         order_id: String,
-        /// Display form of the status-fetch error.
-        cause: String,
+        /// Typed status-fetch error (also available via [`Error::source`]).
+        cause: Box<MerchantError>,
     },
     /// `create_order` expected unpaid + non-empty `taler_pay_uri`.
     UnexpectedOrderStatus {
@@ -109,6 +117,17 @@ impl fmt::Display for MerchantError {
                 }
                 Ok(())
             }
+            MerchantError::RedirectDisallowed { status, location } => {
+                write!(
+                    f,
+                    "HTTP {status} redirect refused (client never follows redirects"
+                )?;
+                if let Some(loc) = location {
+                    write!(f, "; Location: {loc}")?;
+                }
+                write!(f, ")")?;
+                Ok(())
+            }
             MerchantError::Http {
                 status,
                 hint,
@@ -144,7 +163,14 @@ impl fmt::Display for MerchantError {
     }
 }
 
-impl std::error::Error for MerchantError {}
+impl Error for MerchantError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            MerchantError::CreatedButStatusFailed { cause, .. } => Some(cause.as_ref()),
+            _ => None,
+        }
+    }
+}
 
 impl MerchantError {
     pub(crate) fn from_http(status: u16, body: &str) -> Self {

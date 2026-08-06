@@ -11,9 +11,10 @@ Demo `/config` observed around protocol `30:0:18`.
 | Config | `GET /config` | Required fields typed; extras retained via `flatten` |
 | Orders write | `POST /private/orders` | Minimal order draft + `create_token`; weak IDs rejected if `create_token=false` |
 | Orders read | `GET /private/orders/{id}` | Tagged union unpaid/claimed/paid |
-| Create helper | `create_order` | POST+GET; requires unpaid + pay URI; orphan/unexpected typed errors |
+| Create helper | `create_order` | POST+GET; unpaid + pay URI; orphan nests typed `cause` + `Error::source` |
 | Amounts | common-API grammar | Letters-only currency ≤11; ≤8 frac; ≤2⁵² |
-| Auth | Bearer `secret-token:` | Normalized; redacted; zeroized |
+| Auth | Bearer `secret-token:` | Normalized; redacted; zeroized; Authorization header zeroized after send |
+| HTTP client | ureq sync | **No redirects** (`RedirectDisallowed`); HTTPS required (HTTP loopback only) |
 | CLI | config / create-order / status | Env-based sandbox smoke |
 
 ## Explicitly deferred (funded milestones)
@@ -32,8 +33,8 @@ Demo `/config` observed around protocol `30:0:18`.
 
 ## Test evidence
 
-- Unit: Amount grammar + auth redaction/serde + URL join/encode + order-id entropy
+- HTTP mocks: path, Bearer, body, create→status, orphan GET (+ `source`), unexpected claimed, empty pay URI, empty summary / bad fulfillment, claimed/paid/404/409/401/302-redirect, malformed JSON, session_id query encode, `create_token: true`
+- Unit: Amount grammar + auth redaction/serde + URL join/encode + HTTPS/host/fulfillment rules + order-id entropy
 - Fixtures: config / post / unpaid / claimed / paid
-- HTTP mocks: path, Bearer, body, create→status, orphan GET failure, unexpected claimed, claimed/paid/404/409/401, `create_token: true`
 - Live (optional): public demo sandbox unpaid create
 - CI: fmt + clippy `-D warnings` + test

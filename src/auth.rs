@@ -32,6 +32,9 @@ impl SecretToken {
     }
 
     /// Value for the `Authorization` header (`Bearer secret-token:…`).
+    ///
+    /// Callers that hold this `String` should [`Zeroize::zeroize`] it after the
+    /// HTTP call when feasible; the client does so for its own request path.
     pub fn authorization_header_value(&self) -> String {
         format!("Bearer {SECRET_TOKEN_PREFIX}{}", self.inner)
     }
@@ -65,11 +68,16 @@ impl fmt::Display for SecretToken {
 
 /// Optional claim token returned when creating an order with `create_token: true`.
 ///
-/// - [`Debug`] / [`Display`] redact the secret
-/// - [`Serialize`] emits `"[REDACTED]"` so accidental `serde_json::to_string` logging
-///   does not leak the token
-/// - [`Deserialize`] accepts the real wire value from the Merchant Backend
-/// - Memory is zeroized on drop
+/// # Logging vs persistence
+///
+/// - [`Debug`] / [`Display`] always redact.
+/// - [`Serialize`] also emits `"[REDACTED]"` so accidental `serde_json::to_string`
+///   in logs cannot leak the token.
+/// - [`Deserialize`] accepts the real wire value from the Merchant Backend.
+/// - To **intentionally** persist or embed the secret (e.g. durable order store,
+///   pay URI construction), use [`ClaimToken::as_str`] — never rely on `Serialize`.
+///
+/// Memory is zeroized on drop.
 #[derive(Clone, PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
 pub struct ClaimToken(String);
 
@@ -79,7 +87,9 @@ impl ClaimToken {
         Self(value.into())
     }
 
-    /// Borrow the raw claim token (use only when constructing pay URIs).
+    /// Borrow the raw claim token for intentional use (pay URI / durable store).
+    ///
+    /// **Do not** log this value. [`Serialize`] will not give you the secret back.
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -99,6 +109,7 @@ impl fmt::Display for ClaimToken {
 
 impl Serialize for ClaimToken {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        // Intentional: serde must not be a silent secret channel.
         serializer.serialize_str("[REDACTED]")
     }
 }
@@ -128,6 +139,7 @@ impl<'de> Deserialize<'de> for ClaimToken {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::PostOrderResponse;
 
     #[test]
     fn normalizes_prefix() {
@@ -164,5 +176,28 @@ mod tests {
         assert!(!json.contains("claim-xyz"));
         let wire: ClaimToken = serde_json::from_str("\"claim-xyz\"").unwrap();
         assert_eq!(wire.as_str(), "claim-xyz");
+    }
+
+    #[test]
+    fn post_order_response_serialize_does_not_persist_claim_secret() {
+        let resp = PostOrderResponse {
+            order_id: "o-1".into(),
+            token: Some(ClaimToken::new("claim-must-not-appear")),
+            pay_deadline: crate::types::Timestamp {
+                t_s: Some(serde_json::json!(1)),
+            },
+            extra: Default::default(),
+        };
+        let json = serde_json::to_string(&resp).unwrap();
+        assert!(
+            !json.contains("claim-must-not-appear"),
+            "Serialize must not leak claim tokens: {json}"
+        );
+        assert!(json.contains("[REDACTED]"));
+        // Intentional persistence path:
+        assert_eq!(
+            resp.token.as_ref().map(ClaimToken::as_str),
+            Some("claim-must-not-appear")
+        );
     }
 }

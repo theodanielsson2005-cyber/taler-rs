@@ -22,7 +22,14 @@ possible. We will acknowledge receipt and work on a fix as promptly as we can.
 ## Security-relevant design notes (PoC)
 
 - Merchant access tokens and claim tokens are redacted in `Debug`/`Display` and
-  zeroized on drop.
+  zeroized on drop. `ClaimToken` **Serialize** also emits `[REDACTED]` so
+  accidental JSON logging cannot leak secrets — use `ClaimToken::as_str()` only
+  for intentional persistence / pay-URI construction.
+- HTTP redirects are **never followed** (`redirects(0)`); a 3xx response becomes
+  `MerchantError::RedirectDisallowed` so Bearer tokens cannot hop to another host.
+- `base_url` must be `https://` with a host, or `http://` only for loopback
+  (`127.0.0.1` / `localhost` / `::1`) used by local tests.
+- `fulfillment_url` must be an absolute `http`/`https` URL (rejects `javascript:` etc.).
 - Prefer unguessable order IDs with `create_token: false` so public status URLs
   are not enumerable.
 - Never put buyer PII in fulfillment URLs, logs, or scrapeable order listings.
